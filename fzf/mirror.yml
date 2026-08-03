@@ -86,12 +86,10 @@ assets:
     - "^fzf-.*-linux_amd64\\.tar\\.gz$"
   linux/arm64:
     - "^fzf-.*-linux_arm64\\.tar\\.gz$"
-  # Pass 2 — darwin (macOS minutes are 10× linux; uncommented once the Linux
-  # matrix is end-to-end green).
-  # darwin/amd64:
-  #   - "^fzf-.*-darwin_amd64\\.tar\\.gz$"
-  # darwin/arm64:
-  #   - "^fzf-.*-darwin_arm64\\.tar\\.gz$"
+  darwin/amd64:
+    - "^fzf-.*-darwin_amd64\\.tar\\.gz$"
+  darwin/arm64:
+    - "^fzf-.*-darwin_arm64\\.tar\\.gz$"
   # Pass 3 — windows (2× linux).
   # windows/amd64:
   #   - "^fzf-.*-windows_amd64\\.zip$"
