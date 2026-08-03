@@ -1,0 +1,152 @@
+# ⚠ `extends:` is a SHALLOW merge of TOP-LEVEL KEYS. Setting a key here
+# REPLACES the base's block outright — there is no per-key merge. `platforms:`
+# is deliberately NOT restated below: it carries the container legs that make
+# this spec's bare Linux keys honest, and restating it to tweak one runner
+# would drop them all without reddening anything.
+extends: ../mirror-base.yml
+
+name: fzf
+
+# Logical index package `fzf/fzf` at the physical path
+# `ghcr.io/ocx-contrib/fzf/fzf` — slash segments, never hyphen-flattened.
+# Two segments always; `junegunn` is a personal handle, not a vendor, so the
+# tool names itself. The first segment must be this repo's own GitHub owner:
+# GITHUB_TOKEN only authorises packages owned by the repo the workflow runs in.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/fzf/fzf
+
+source:
+  type: github_release
+  owner: junegunn
+  repo: fzf
+  # fzf TAGS carry a `v` prefix (`v0.74.2`); the ASSET FILENAMES do not
+  # (`fzf-0.74.2-linux_amd64.tar.gz`). The capture group strips it so the
+  # published version is bare semver.
+  tag_pattern: "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+# ─── libc gate (Phase 3.5) — the evidence, not the conclusion ───────────────
+#
+# fzf is Go. That is NOT the verdict: a Go binary built with cgo enabled is
+# dynamically linked and would need `+libc.glibc`. Measured, not assumed —
+# v0.74.2, both arches, and the v0.74.0 floor:
+#
+#   $ file x-amd64/fzf
+#   ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked,
+#   Go BuildID=…, BuildID[sha1]=500e5f81…, stripped
+#   $ file x-arm64/fzf
+#   ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked,
+#   Go BuildID=…, BuildID[sha1]=44373244…, stripped
+#   $ file x-floor/fzf            # v0.74.0 linux_amd64
+#   ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, …
+#
+#   $ readelf -l <bin> | grep -c INTERP   → 0        (all three)
+#   $ readelf -d <bin> | grep NEEDED      → (none)   (all three)
+#   $ ldd <bin>                           → not a dynamic executable
+#
+# No PT_INTERP and no DT_NEEDED: the artifact requires nothing of the host, so
+# both Linux keys are BARE — no `+libc.*` suffix, and there is no gnu/musl
+# split to make (upstream ships ONE Linux binary per arch). Tagging them
+# `+libc.musl` or `+libc.glibc` would be a false requirement that hid the
+# package from hosts it in fact runs on. Container legs (ubuntu + alpine +
+# fedora) live in ../mirror-base.yml and are what turn that claim into
+# evidence.
+#
+# ─── Scope (verified against v0.74.0, the floor, v0.74.1 and v0.74.2) ───────
+#
+# Asset tokens are GO-STYLE (`linux_amd64`, `darwin_arm64`) — not Rust target
+# triples — and the version in the filename has no `v`.
+#
+# Upstream also publishes, and this mirror deliberately does not carry:
+#   linux_armv5 / armv6 / armv7   — no OCX linux/arm platform
+#   linux_riscv64 / ppc64le       — no OCX platform
+#   linux_s390x / loong64         — no OCX platform
+#   freebsd_amd64 / openbsd_amd64 — no OCX platform (OCX os keys are
+#                                   linux/darwin/windows only)
+#   android_arm64                 — no OCX platform
+#   fzf_<V>_*.deb                 — distro packaging, not a portable archive;
+#                                   present from v0.74.1 on, absent at the
+#                                   v0.74.0 floor. Pure packaging noise: the
+#                                   tar.gz/zip platform set is IDENTICAL across
+#                                   the whole 0.74.0–0.74.2 range, so the range
+#                                   needs no floor bump and no per-platform
+#                                   min_version. The `.deb` names start `fzf_`
+#                                   (underscore) rather than `fzf-`, so the
+#                                   anchored patterns below exclude them twice
+#                                   over.
+#   fzf_<V>_checksums.txt         — sidecar
+#
+# The anchored ^…$ regexes are what keep those out. Resolution verified BOTH
+# ways on ALL THREE in-range releases: each of the six patterns matches EXACTLY
+# one asset, and nothing else in the release matches any of them. A pattern
+# matching zero is silently skipped, not an error — it would yield a green run
+# with a missing platform.
+assets:
+  linux/amd64:
+    - "^fzf-.*-linux_amd64\\.tar\\.gz$"
+  linux/arm64:
+    - "^fzf-.*-linux_arm64\\.tar\\.gz$"
+  # Pass 2 — darwin (macOS minutes are 10× linux; uncommented once the Linux
+  # matrix is end-to-end green).
+  # darwin/amd64:
+  #   - "^fzf-.*-darwin_amd64\\.tar\\.gz$"
+  # darwin/arm64:
+  #   - "^fzf-.*-darwin_arm64\\.tar\\.gz$"
+  # Pass 3 — windows (2× linux).
+  # windows/amd64:
+  #   - "^fzf-.*-windows_amd64\\.zip$"
+  # windows/arm64:
+  #   - "^fzf-.*-windows_arm64\\.zip$"
+
+# Every archive — tarball and zip alike — is FLAT: a single `fzf` (`fzf.exe` on
+# Windows) at the archive root, mode 0755, with no wrapper directory and no
+# sibling files at all. Verified with `tar tvf` / `unzip -l` on v0.74.0 and
+# v0.74.2. So strip_components 0 on every platform, the binary lands at the
+# content root, and one metadata.json (PATH = ${installPath}) serves all six.
+asset_type:
+  type: archive
+  strip_components: 0
+
+# `off`, overriding the base's `auto` — FORCED by the flat archive, not chosen.
+# The scan only inspects an interface-visible `${installPath}/<dir>` PATH
+# entry, and this archive has no subdirectory to point one at, so both `auto`
+# and `verify` fail spec load at exit 65:
+#
+#   bin_scan is enabled but metadata.json declares no interface-visible
+#   ${installPath}/<dir> PATH entry — the verification would inspect no file and
+#   pass green whatever the archive contains.
+#
+# The `binaries` list in metadata.json is therefore hand-maintained, exactly as
+# that error directs. It is as short and stable as a list gets: `fzf` is the
+# ONLY member of the archive. Quoted so no YAML 1.1 reader folds the bare word
+# into boolean `false`.
+bin_scan: "off"
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  min: "0.74.0"
+  new_per_run: 5
+  poll_interval: "12 */6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
+  # `catalog.logo` above, which resolve against this spec's own directory.
+  - name: smoke
+    script: fzf/tests/smoke.star
+
+annotations:
+  # From the Phase 1.5 license gate:
+  #   $ gh api repos/junegunn/fzf/license --jq '.license.spdx_id'
+  #   MIT
+  org.opencontainers.image.licenses: "MIT"
+
+announce:
+  # Spelled out, not derived from target.repository — the logical name and the
+  # physical path are related by convention only.
+  package: fzf/fzf
+  fork: ocx-contrib/index

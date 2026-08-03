@@ -1,0 +1,101 @@
+# Shared base for every spec in this repository (fzf, the fuzzy finder).
+#
+# NOT a spec: it has no name/target/source and is never loaded on its own.
+# Everything a package owns — name, target, source, assets, asset_type,
+# metadata, catalog, tests, versions, announce, annotations — stays in that
+# package's own mirror.yml.
+#
+# ⚠️ `extends:` is a SHALLOW merge of top-level keys. A spec that sets a key
+# below replaces that block OUTRIGHT — there is no per-key merge. `platforms:`
+# is where this bites: it carries BOTH the runner matrix and the container
+# legs, so a child that restates it to tweak one runner silently drops every
+# `containers:` entry. Nothing reds — the legs simply stop existing, and every
+# os.features claim in that spec goes back to being merely asserted. So
+# `platforms:` lives HERE and fzf/mirror.yml deliberately does not restate it.
+
+skip_prereleases: true
+cascade: true
+
+# The fleet rule for a new package. A cascade tag (`latest`, `X`, `X.Y`)
+# re-points on every re-publish; without a build segment the new manifest
+# reuses the bare version tag and orphans the prior digest for registry GC,
+# breaking any `@sha256:` pin in a consumer's ocx.lock. The `none` exception
+# applies only where upstream versions ALREADY carry semver build metadata
+# (double-stamping is rejected and silently empties the mirror) — fzf tags bare
+# semver behind a `v` prefix (`v0.74.2` → `0.74.2`), so it does not apply.
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+concurrency:
+  # Assets are ~2 MB single-binary archives.
+  max_downloads: 8
+  max_bundles: 4
+  max_pushes: 2
+  rate_limit_ms: 100
+  max_retries: 3
+  compression_threads: 0
+
+# Default for a new package here. A package whose PATH entry is bare
+# `${installPath}` — i.e. whose archive is flat, with no subdirectory to scan —
+# MUST override this with `"off"` and hand-list `binaries`, or spec load fails
+# at exit 65. `fzf` is exactly that case; see the note in fzf/mirror.yml.
+bin_scan: auto
+
+# ─── Platform matrix ────────────────────────────────────────────────────────
+#
+# `os.features` states what an artifact REQUIRES OF THE HOST — not a label for
+# how it was built. fzf is Go, and upstream's .goreleaser.yml sets no CGO, but
+# a Go binary built with cgo enabled IS dynamically linked, so the language is
+# not the verdict either. Byte-measured on v0.74.2 AND on the v0.74.0 floor
+# (evidence pasted above fzf/mirror.yml's `assets:`): no PT_INTERP, no
+# DT_NEEDED, on x86-64 and aarch64 alike. The artifact requires nothing of the
+# host, so BOTH Linux keys are BARE. There is no gnu/musl split to make —
+# upstream ships one Linux binary per arch and it runs under either userland.
+#
+# A bare key claims universality, so it must prove it: ubuntu (glibc) + alpine
+# (musl) + fedora (different glibc vintage). The alpine leg IS the proof —
+# drop it and the universal claim is merely asserted.
+#
+# A future package here whose libc measurement differs must restate this whole
+# block in its own spec — see the shallow-merge warning at the top.
+platforms:
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  linux/arm64:
+    # arm64 container legs run natively — no qemu — so the runner arch must
+    # match the platform or the renderer reds the leg up front.
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    # Intel slice tested on the arm64 macos-14 runner via Rosetta 2 — GitHub's
+    # native macos-13 Intel pool is exhausted and deadlocks the push job.
+    runner: macos-14
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-14
+    shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
+  windows/arm64:
+    # Native arm64 Windows runner — the amd64 pool cannot execute an ARM64 PE.
+    # Upstream does ship fzf-<V>-windows_arm64.zip, so this leg resolves an
+    # asset and must exist here or push reds it as missing_junit.
+    runner: windows-11-arm
+    shell: pwsh
+  # No `containers:` on darwin or windows — those runners have no Linux
+  # container engine, and the key is rejected at spec load.
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"  # pinged in-message on failures
