@@ -90,11 +90,10 @@ assets:
     - "^fzf-.*-darwin_amd64\\.tar\\.gz$"
   darwin/arm64:
     - "^fzf-.*-darwin_arm64\\.tar\\.gz$"
-  # Pass 3 — windows (2× linux).
-  # windows/amd64:
-  #   - "^fzf-.*-windows_amd64\\.zip$"
-  # windows/arm64:
-  #   - "^fzf-.*-windows_arm64\\.zip$"
+  windows/amd64:
+    - "^fzf-.*-windows_amd64\\.zip$"
+  windows/arm64:
+    - "^fzf-.*-windows_arm64\\.zip$"
 
 # Every archive — tarball and zip alike — is FLAT: a single `fzf` (`fzf.exe` on
 # Windows) at the archive root, mode 0755, with no wrapper directory and no
