@@ -26,17 +26,6 @@ The shell-integration scripts and Vim plugin that live in the upstream Git
 repository are not part of an upstream release archive, so they are not
 mirrored — the release archives contain the `fzf` executable alone.
 
-## Install with ocx
-
-```sh
-ocx install ocx.sh/fzf/fzf
-```
-
-```sh
-# or pin a specific version
-ocx install ocx.sh/fzf/fzf:0.74.2
-```
-
 ## Links
 
 - [fzf website](https://junegunn.github.io/fzf/)
